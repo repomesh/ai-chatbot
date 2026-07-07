@@ -139,81 +139,90 @@ function PureMultimodalInput({
     setLocalStorageInput(input);
   }, [input, setLocalStorageInput]);
 
-  const handleInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = event.target.value;
-    setInput(val);
-
-    if (val.startsWith("/") && !val.includes(" ")) {
-      setSlashOpen(true);
-      setSlashQuery(val.slice(1));
-      setSlashIndex(0);
-    } else {
-      setSlashOpen(false);
-    }
-  };
-
-  const handleSlashSelect = (cmd: SlashCommand) => {
-    setSlashOpen(false);
-    setInput("");
-    switch (cmd.action) {
-      case "new":
-        router.push("/");
-        break;
-      case "clear":
-        setMessages(() => []);
-        break;
-      case "rename":
-        toast("Rename is available from the sidebar chat menu.");
-        break;
-      case "model": {
-        const modelBtn = document.querySelector<HTMLButtonElement>(
-          "[data-testid='model-selector']"
-        );
-        modelBtn?.click();
-        break;
-      }
-      case "theme":
-        setTheme(resolvedTheme === "dark" ? "light" : "dark");
-        break;
-      case "delete":
-        toast("Delete this chat?", {
-          action: {
-            label: "Delete",
-            onClick: () => {
-              fetch(
-                `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat?id=${chatId}`,
-                { method: "DELETE" }
-              );
-              router.push("/");
-              toast.success("Chat deleted");
-            },
-          },
-        });
-        break;
-      case "purge":
-        toast("Delete all chats?", {
-          action: {
-            label: "Delete all",
-            onClick: () => {
-              fetch(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/history`, {
-                method: "DELETE",
-              });
-              router.push("/");
-              toast.success("All chats deleted");
-            },
-          },
-        });
-        break;
-      default:
-        break;
-    }
-  };
-
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
+
+  const handleInput = useCallback(
+    (event: ChangeEvent<HTMLTextAreaElement>) => {
+      const val = event.target.value;
+      setInput(val);
+
+      if (val.startsWith("/") && !val.includes(" ")) {
+        setSlashOpen(true);
+        setSlashQuery(val.slice(1));
+        setSlashIndex(0);
+      } else {
+        setSlashOpen(false);
+      }
+    },
+    [setInput]
+  );
+
+  const handleSlashSelect = useCallback(
+    (cmd: SlashCommand) => {
+      setSlashOpen(false);
+      setInput("");
+      switch (cmd.action) {
+        case "new":
+          router.push("/");
+          break;
+        case "clear":
+          setMessages(() => []);
+          break;
+        case "rename":
+          toast("Rename is available from the sidebar chat menu.");
+          break;
+        case "model": {
+          const modelBtn = document.querySelector<HTMLButtonElement>(
+            "[data-testid='model-selector']"
+          );
+          modelBtn?.click();
+          break;
+        }
+        case "theme":
+          setTheme(resolvedTheme === "dark" ? "light" : "dark");
+          break;
+        case "delete":
+          toast("Delete this chat?", {
+            action: {
+              label: "Delete",
+              onClick: () => {
+                fetch(
+                  `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat?id=${chatId}`,
+                  { method: "DELETE" }
+                );
+                router.push("/");
+                toast.success("Chat deleted");
+              },
+            },
+          });
+          break;
+        case "purge":
+          toast("Delete all chats?", {
+            action: {
+              label: "Delete all",
+              onClick: () => {
+                fetch(
+                  `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/history`,
+                  {
+                    method: "DELETE",
+                  }
+                );
+                router.push("/");
+                toast.success("All chats deleted");
+              },
+            },
+          });
+          break;
+        default:
+          break;
+      }
+    },
+    [chatId, resolvedTheme, router, setInput, setMessages, setTheme]
+  );
 
   const submitForm = useCallback(() => {
     window.history.pushState(
@@ -223,19 +232,19 @@ function PureMultimodalInput({
     );
 
     sendMessage({
-      role: "user",
       parts: [
         ...attachments.map((attachment) => ({
+          mediaType: attachment.contentType,
+          name: attachment.name,
           type: "file" as const,
           url: attachment.url,
-          name: attachment.name,
-          mediaType: attachment.contentType,
         })),
         {
-          type: "text",
           text: input,
+          type: "text",
         },
       ],
+      role: "user",
     });
 
     setAttachments([]);
@@ -264,8 +273,8 @@ function PureMultimodalInput({
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/files/upload`,
         {
-          method: "POST",
           body: formData,
+          method: "POST",
         }
       );
 
@@ -274,9 +283,9 @@ function PureMultimodalInput({
         const { url, pathname, contentType } = data;
 
         return {
-          url,
-          name: pathname,
           contentType,
+          name: pathname,
+          url,
         };
       }
       const { error } = await response.json();
@@ -368,23 +377,95 @@ function PureMultimodalInput({
     return () => textarea.removeEventListener("paste", handlePaste);
   }, [handlePaste]);
 
+  const handleCancelEditMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      onCancelEdit?.();
+    },
+    [onCancelEdit]
+  );
+
+  const handleSlashClose = useCallback(() => {
+    setSlashOpen(false);
+  }, []);
+
+  const handlePromptSubmit = useCallback(() => {
+    if (input.startsWith("/")) {
+      const query = input.slice(1).trim();
+      const cmd = slashCommands.find((c) => c.name === query);
+      if (cmd) {
+        handleSlashSelect(cmd);
+      }
+      return;
+    }
+    if (!input.trim() && attachments.length === 0) {
+      return;
+    }
+    if (status === "ready" || status === "error") {
+      submitForm();
+    } else {
+      toast.error("Please wait for the model to finish its response!");
+    }
+  }, [attachments.length, handleSlashSelect, input, status, submitForm]);
+
+  const handleTextareaKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (slashOpen) {
+        const filtered = slashCommands.filter((cmd) =>
+          cmd.name.startsWith(slashQuery.toLowerCase())
+        );
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashIndex((i) => Math.min(i + 1, filtered.length - 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashIndex((i) => Math.max(i - 1, 0));
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          if (filtered[slashIndex]) {
+            handleSlashSelect(filtered[slashIndex]);
+          }
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setSlashOpen(false);
+          return;
+        }
+      }
+      if (e.key === "Escape" && editingMessage && onCancelEdit) {
+        e.preventDefault();
+        onCancelEdit();
+      }
+    },
+    [
+      editingMessage,
+      handleSlashSelect,
+      onCancelEdit,
+      slashIndex,
+      slashOpen,
+      slashQuery,
+    ]
+  );
+
   return (
     <div className={cn("relative flex w-full flex-col gap-4", className)}>
-      {editingMessage && onCancelEdit && (
+      {editingMessage && onCancelEdit ? (
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
           <span>Editing message</span>
           <button
             className="rounded px-1.5 py-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onCancelEdit();
-            }}
+            onMouseDown={handleCancelEditMouseDown}
             type="button"
           >
             Cancel
           </button>
         </div>
-      )}
+      ) : null}
 
       {!editingMessage &&
         !isLoading &&
@@ -408,36 +489,19 @@ function PureMultimodalInput({
       />
 
       <div className="relative">
-        {slashOpen && (
+        {slashOpen ? (
           <SlashCommandMenu
-            onClose={() => setSlashOpen(false)}
+            onClose={handleSlashClose}
             onSelect={handleSlashSelect}
             query={slashQuery}
             selectedIndex={slashIndex}
           />
-        )}
+        ) : null}
       </div>
 
       <PromptInput
         className="[&>div]:rounded-2xl [&>div]:border [&>div]:border-border/30 [&>div]:bg-card/70 [&>div]:shadow-[var(--shadow-composer)] [&>div]:transition-shadow [&>div]:duration-300 [&>div]:focus-within:shadow-[var(--shadow-composer-focus)]"
-        onSubmit={() => {
-          if (input.startsWith("/")) {
-            const query = input.slice(1).trim();
-            const cmd = slashCommands.find((c) => c.name === query);
-            if (cmd) {
-              handleSlashSelect(cmd);
-            }
-            return;
-          }
-          if (!input.trim() && attachments.length === 0) {
-            return;
-          }
-          if (status === "ready" || status === "error") {
-            submitForm();
-          } else {
-            toast.error("Please wait for the model to finish its response!");
-          }
-        }}
+        onSubmit={handlePromptSubmit}
       >
         {(attachments.length > 0 || uploadQueue.length > 0) && (
           <div
@@ -445,26 +509,20 @@ function PureMultimodalInput({
             data-testid="attachments-preview"
           >
             {attachments.map((attachment) => (
-              <PreviewAttachment
+              <AttachmentPreviewItem
                 attachment={attachment}
+                fileInputRef={fileInputRef}
                 key={attachment.url}
-                onRemove={() => {
-                  setAttachments((currentAttachments) =>
-                    currentAttachments.filter((a) => a.url !== attachment.url)
-                  );
-                  if (fileInputRef.current) {
-                    fileInputRef.current.value = "";
-                  }
-                }}
+                setAttachments={setAttachments}
               />
             ))}
 
             {uploadQueue.map((filename) => (
               <PreviewAttachment
                 attachment={{
-                  url: "",
-                  name: filename,
                   contentType: "",
+                  name: filename,
+                  url: "",
                 }}
                 isUploading={true}
                 key={filename}
@@ -476,39 +534,7 @@ function PureMultimodalInput({
           className="min-h-24 text-[13px] leading-relaxed px-4 pt-3.5 pb-1.5 placeholder:text-muted-foreground/35"
           data-testid="multimodal-input"
           onChange={handleInput}
-          onKeyDown={(e) => {
-            if (slashOpen) {
-              const filtered = slashCommands.filter((cmd) =>
-                cmd.name.startsWith(slashQuery.toLowerCase())
-              );
-              if (e.key === "ArrowDown") {
-                e.preventDefault();
-                setSlashIndex((i) => Math.min(i + 1, filtered.length - 1));
-                return;
-              }
-              if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setSlashIndex((i) => Math.max(i - 1, 0));
-                return;
-              }
-              if (e.key === "Enter" || e.key === "Tab") {
-                e.preventDefault();
-                if (filtered[slashIndex]) {
-                  handleSlashSelect(filtered[slashIndex]);
-                }
-                return;
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setSlashOpen(false);
-                return;
-              }
-            }
-            if (e.key === "Escape" && editingMessage && onCancelEdit) {
-              e.preventDefault();
-              onCancelEdit();
-            }
-          }}
+          onKeyDown={handleTextareaKeyDown}
           placeholder={
             editingMessage ? "Edit your message..." : "Ask anything..."
           }
@@ -584,6 +610,29 @@ export const MultimodalInput = memo(
   }
 );
 
+function PureAttachmentPreviewItem({
+  attachment,
+  fileInputRef,
+  setAttachments,
+}: {
+  attachment: Attachment;
+  fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
+  setAttachments: Dispatch<SetStateAction<Attachment[]>>;
+}) {
+  const handleRemove = useCallback(() => {
+    setAttachments((currentAttachments) =>
+      currentAttachments.filter((a) => a.url !== attachment.url)
+    );
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [attachment.url, fileInputRef, setAttachments]);
+
+  return <PreviewAttachment attachment={attachment} onRemove={handleRemove} />;
+}
+
+const AttachmentPreviewItem = memo(PureAttachmentPreviewItem);
+
 function PureAttachmentsButton({
   fileInputRef,
   status,
@@ -596,12 +645,19 @@ function PureAttachmentsButton({
   const { data: modelsResponse } = useSWR(
     `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
     (url: string) => fetch(url).then((r) => r.json()),
-    { revalidateOnFocus: false, dedupingInterval: 3_600_000 }
+    { dedupingInterval: 3_600_000, revalidateOnFocus: false }
   );
 
   const caps: Record<string, ModelCapabilities> | undefined =
     modelsResponse?.capabilities ?? modelsResponse;
   const hasVision = caps?.[selectedModelId]?.vision ?? false;
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      fileInputRef.current?.click();
+    },
+    [fileInputRef]
+  );
 
   return (
     <Button
@@ -613,18 +669,74 @@ function PureAttachmentsButton({
       )}
       data-testid="attachments-button"
       disabled={status !== "ready" || !hasVision}
-      onClick={(event) => {
-        event.preventDefault();
-        fileInputRef.current?.click();
-      }}
+      onClick={handleClick}
       variant="ghost"
     >
-      <PaperclipIcon size={14} style={{ width: 14, height: 14 }} />
+      <PaperclipIcon size={14} style={{ height: 14, width: 14 }} />
     </Button>
   );
 }
 
 const AttachmentsButton = memo(PureAttachmentsButton);
+
+function ModelSelectorOption({
+  capabilities,
+  curated,
+  model,
+  onModelChange,
+  selectedModelId,
+  setOpen,
+}: {
+  capabilities: Record<string, ModelCapabilities> | undefined;
+  curated: boolean;
+  model: ChatModel;
+  onModelChange?: (modelId: string) => void;
+  selectedModelId: string;
+  setOpen: Dispatch<SetStateAction<boolean>>;
+}) {
+  const [logoProvider] = model.id.split("/");
+  const handleSelect = useCallback(() => {
+    if (!curated) {
+      return;
+    }
+    onModelChange?.(model.id);
+    setCookie("chat-model", model.id);
+    setOpen(false);
+    setTimeout(() => {
+      document
+        .querySelector<HTMLTextAreaElement>("[data-testid='multimodal-input']")
+        ?.focus();
+    }, 50);
+  }, [curated, model.id, onModelChange, setOpen]);
+
+  return (
+    <ModelSelectorItem
+      className={cn(
+        "flex w-full",
+        model.id === selectedModelId &&
+          "border-b border-dashed border-foreground/50",
+        !curated && "opacity-40 cursor-default"
+      )}
+      onSelect={handleSelect}
+      value={model.id}
+    >
+      <ModelSelectorLogo provider={logoProvider} />
+      <ModelSelectorName>{model.name}</ModelSelectorName>
+      <div className="ml-auto flex items-center gap-2 text-foreground/70">
+        {capabilities?.[model.id]?.tools ? (
+          <WrenchIcon className="size-3.5" />
+        ) : null}
+        {capabilities?.[model.id]?.vision ? (
+          <EyeIcon className="size-3.5" />
+        ) : null}
+        {capabilities?.[model.id]?.reasoning ? (
+          <BrainIcon className="size-3.5" />
+        ) : null}
+        {!curated && <LockIcon className="size-3 text-muted-foreground/50" />}
+      </div>
+    </ModelSelectorItem>
+  );
+}
 
 function PureModelSelectorCompact({
   selectedModelId,
@@ -637,7 +749,7 @@ function PureModelSelectorCompact({
   const { data: modelsData } = useSWR(
     `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
     (url: string) => fetch(url).then((r) => r.json()),
-    { revalidateOnFocus: false, dedupingInterval: 3_600_000 }
+    { dedupingInterval: 3_600_000, revalidateOnFocus: false }
   );
 
   const capabilities: Record<string, ModelCapabilities> | undefined =
@@ -659,7 +771,7 @@ function PureModelSelectorCompact({
           data-testid="model-selector"
           variant="ghost"
         >
-          {provider && <ModelSelectorLogo provider={provider} />}
+          {provider ? <ModelSelectorLogo provider={provider} /> : null}
           <ModelSelectorName>{selectedModel.name}</ModelSelectorName>
         </Button>
       </ModelSelectorTrigger>
@@ -686,7 +798,7 @@ function PureModelSelectorCompact({
               if (!grouped[key]) {
                 grouped[key] = [];
               }
-              grouped[key].push({ model, curated: curatedIds.has(model.id) });
+              grouped[key].push({ curated: curatedIds.has(model.id), model });
             }
 
             const sortedKeys = Object.keys(grouped).sort((a, b) => {
@@ -719,8 +831,8 @@ function PureModelSelectorCompact({
               openai: "OpenAI",
               perplexity: "Perplexity",
               "prime-intellect": "Prime Intellect",
-              xiaomi: "Xiaomi",
               xai: "xAI",
+              xiaomi: "Xiaomi",
               zai: "Zai",
             };
 
@@ -733,53 +845,17 @@ function PureModelSelectorCompact({
                 }
                 key={key}
               >
-                {grouped[key].map(({ model, curated }) => {
-                  const logoProvider = model.id.split("/")[0];
-                  return (
-                    <ModelSelectorItem
-                      className={cn(
-                        "flex w-full",
-                        model.id === selectedModel.id &&
-                          "border-b border-dashed border-foreground/50",
-                        !curated && "opacity-40 cursor-default"
-                      )}
-                      key={model.id}
-                      onSelect={() => {
-                        if (!curated) {
-                          return;
-                        }
-                        onModelChange?.(model.id);
-                        setCookie("chat-model", model.id);
-                        setOpen(false);
-                        setTimeout(() => {
-                          document
-                            .querySelector<HTMLTextAreaElement>(
-                              "[data-testid='multimodal-input']"
-                            )
-                            ?.focus();
-                        }, 50);
-                      }}
-                      value={model.id}
-                    >
-                      <ModelSelectorLogo provider={logoProvider} />
-                      <ModelSelectorName>{model.name}</ModelSelectorName>
-                      <div className="ml-auto flex items-center gap-2 text-foreground/70">
-                        {capabilities?.[model.id]?.tools && (
-                          <WrenchIcon className="size-3.5" />
-                        )}
-                        {capabilities?.[model.id]?.vision && (
-                          <EyeIcon className="size-3.5" />
-                        )}
-                        {capabilities?.[model.id]?.reasoning && (
-                          <BrainIcon className="size-3.5" />
-                        )}
-                        {!curated && (
-                          <LockIcon className="size-3 text-muted-foreground/50" />
-                        )}
-                      </div>
-                    </ModelSelectorItem>
-                  );
-                })}
+                {grouped[key].map(({ model, curated }) => (
+                  <ModelSelectorOption
+                    capabilities={capabilities}
+                    curated={curated}
+                    key={model.id}
+                    model={model}
+                    onModelChange={onModelChange}
+                    selectedModelId={selectedModel.id}
+                    setOpen={setOpen}
+                  />
+                ))}
               </ModelSelectorGroup>
             ));
           })()}
@@ -798,15 +874,20 @@ function PureStopButton({
   stop: () => void;
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
 }) {
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      stop();
+      setMessages((messages) => messages);
+    },
+    [setMessages, stop]
+  );
+
   return (
     <Button
       className="h-7 w-7 rounded-xl bg-foreground p-1 text-background transition-all duration-200 hover:opacity-85 active:scale-95 disabled:bg-muted disabled:text-muted-foreground/25 disabled:cursor-not-allowed"
       data-testid="stop-button"
-      onClick={(event) => {
-        event.preventDefault();
-        stop();
-        setMessages((messages) => messages);
-      }}
+      onClick={handleClick}
     >
       <StopIcon size={14} />
     </Button>

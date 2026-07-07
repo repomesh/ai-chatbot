@@ -6,9 +6,11 @@ import { WrenchIcon, XIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import {
   type Dispatch,
+  isValidElement,
   memo,
   type ReactNode,
   type SetStateAction,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -41,6 +43,15 @@ type ToolProps = {
   }) => void;
 };
 
+const READING_LEVELS = [
+  "Elementary",
+  "Middle School",
+  "Keep current level",
+  "High School",
+  "College",
+  "Graduate",
+];
+
 const Tool = ({
   description,
   icon,
@@ -60,7 +71,7 @@ const Tool = ({
     }
   }, [selectedTool, description]);
 
-  const handleSelect = () => {
+  const handleSelect = useCallback(() => {
     if (!isToolbarVisible && setIsToolbarVisible) {
       setIsToolbarVisible(true);
       return;
@@ -78,7 +89,34 @@ const Tool = ({
     } else {
       setSelectedTool(description);
     }
-  };
+  }, [
+    description,
+    isToolbarVisible,
+    onClick,
+    selectedTool,
+    sendMessage,
+    setIsToolbarVisible,
+    setSelectedTool,
+  ]);
+
+  const handleHoverEnd = useCallback(() => {
+    if (selectedTool !== description) {
+      setIsHovered(false);
+    }
+  }, [description, selectedTool]);
+
+  const handleHoverStart = useCallback(() => {
+    setIsHovered(true);
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (event.key === "Enter") {
+        handleSelect();
+      }
+    },
+    [handleSelect]
+  );
 
   return (
     <Tooltip open={isHovered && !isAnimating}>
@@ -89,31 +127,23 @@ const Tool = ({
             "bg-primary text-primary-foreground!": selectedTool === description,
           })}
           exit={{
-            scale: 0.9,
             opacity: 0,
+            scale: 0.9,
             transition: { duration: 0.1 },
           }}
-          initial={{ scale: 1, opacity: 0 }}
-          onClick={() => {
-            handleSelect();
-          }}
-          onHoverEnd={() => {
-            if (selectedTool !== description) {
-              setIsHovered(false);
-            }
-          }}
-          onHoverStart={() => {
-            setIsHovered(true);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              handleSelect();
-            }
-          }}
+          initial={{ opacity: 0, scale: 1 }}
+          onClick={handleSelect}
+          onHoverEnd={handleHoverEnd}
+          onHoverStart={handleHoverStart}
+          onKeyDown={handleKeyDown}
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.95 }}
         >
-          {selectedTool === description ? <ArrowUpIcon /> : icon}
+          {selectedTool === description ? (
+            <ArrowUpIcon />
+          ) : isValidElement(icon) ? (
+            icon
+          ) : null}
         </motion.div>
       </TooltipTrigger>
       <TooltipContent
@@ -138,15 +168,6 @@ const ReadingLevelSelector = ({
   isAnimating: boolean;
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
 }) => {
-  const LEVELS = [
-    "Elementary",
-    "Middle School",
-    "Keep current level",
-    "High School",
-    "College",
-    "Graduate",
-  ];
-
   const y = useMotionValue(-40 * 2);
   const dragConstraints = 5 * 40 + 2;
   const yToLevel = useTransform(y, [0, -dragConstraints], [0, 5]);
@@ -163,6 +184,34 @@ const ReadingLevelSelector = ({
 
     return () => unsubscribe();
   }, [yToLevel]);
+
+  const handleClick = useCallback(() => {
+    if (currentLevel !== 2 && hasUserSelectedLevel) {
+      sendMessage({
+        parts: [
+          {
+            text: `Please adjust the reading level to ${READING_LEVELS[currentLevel]} level.`,
+            type: "text",
+          },
+        ],
+        role: "user",
+      });
+
+      setSelectedTool(null);
+    }
+  }, [currentLevel, hasUserSelectedLevel, sendMessage, setSelectedTool]);
+
+  const handleDragEnd = useCallback(() => {
+    if (currentLevel === 2) {
+      setSelectedTool(null);
+    } else {
+      setHasUserSelectedLevel(true);
+    }
+  }, [currentLevel, setSelectedTool]);
+
+  const handleDragStart = useCallback(() => {
+    setHasUserSelectedLevel(false);
+  }, []);
 
   return (
     <div className="relative flex flex-col items-center justify-end">
@@ -186,39 +235,17 @@ const ReadingLevelSelector = ({
               className={cx(
                 "absolute flex flex-row items-center rounded-full border bg-background p-3",
                 {
-                  "bg-primary text-primary-foreground": currentLevel !== 2,
                   "bg-background text-foreground": currentLevel === 2,
+                  "bg-primary text-primary-foreground": currentLevel !== 2,
                 }
               )}
               drag="y"
-              dragConstraints={{ top: -dragConstraints, bottom: 0 }}
+              dragConstraints={{ bottom: 0, top: -dragConstraints }}
               dragElastic={0}
               dragMomentum={false}
-              onClick={() => {
-                if (currentLevel !== 2 && hasUserSelectedLevel) {
-                  sendMessage({
-                    role: "user",
-                    parts: [
-                      {
-                        type: "text",
-                        text: `Please adjust the reading level to ${LEVELS[currentLevel]} level.`,
-                      },
-                    ],
-                  });
-
-                  setSelectedTool(null);
-                }
-              }}
-              onDragEnd={() => {
-                if (currentLevel === 2) {
-                  setSelectedTool(null);
-                } else {
-                  setHasUserSelectedLevel(true);
-                }
-              }}
-              onDragStart={() => {
-                setHasUserSelectedLevel(false);
-              }}
+              onClick={handleClick}
+              onDragEnd={handleDragEnd}
+              onDragStart={handleDragStart}
               style={{ y }}
               transition={{ duration: 0.1 }}
               whileHover={{ scale: 1.05 }}
@@ -232,7 +259,7 @@ const ReadingLevelSelector = ({
             side="left"
             sideOffset={16}
           >
-            {LEVELS[currentLevel]}
+            {READING_LEVELS[currentLevel]}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -278,17 +305,17 @@ const createFixErrorTool = (
   consoleOutput: string,
   documentId?: string
 ): ArtifactToolbarItem => ({
-  icon: <WrenchIcon className="size-4" />,
   description: "Fix error",
+  icon: <WrenchIcon className="size-4" />,
   onClick: ({ sendMessage: send }) => {
     send({
-      role: "user",
       parts: [
         {
-          type: "text",
           text: `Fix the error in the existing script${documentId ? ` (id: ${documentId})` : ""} using updateDocument. Do not create a new script. Console error:\n\n${consoleOutput}`,
+          type: "text",
         },
       ],
+      role: "user",
     });
   },
 });
@@ -329,7 +356,7 @@ const PureToolbar = ({
     setSelectedTool(null);
   });
 
-  const startCloseTimer = () => {
+  const startCloseTimer = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
@@ -338,13 +365,13 @@ const PureToolbar = ({
       setSelectedTool(null);
       setIsToolbarVisible(false);
     }, 2000);
-  };
+  }, [setIsToolbarVisible]);
 
-  const cancelCloseTimer = () => {
+  const cancelCloseTimer = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-  };
+  }, []);
 
   useEffect(
     () => () => {
@@ -360,6 +387,36 @@ const PureToolbar = ({
       setIsToolbarVisible(false);
     }
   }, [status, setIsToolbarVisible]);
+
+  const handleAnimationComplete = useCallback(() => {
+    setIsAnimating(false);
+  }, []);
+
+  const handleAnimationStart = useCallback(() => {
+    setIsAnimating(true);
+  }, []);
+
+  const handleHoverEnd = useCallback(() => {
+    if (status === "streaming") {
+      return;
+    }
+
+    startCloseTimer();
+  }, [startCloseTimer, status]);
+
+  const handleHoverStart = useCallback(() => {
+    if (status === "streaming") {
+      return;
+    }
+
+    cancelCloseTimer();
+    setIsToolbarVisible(true);
+  }, [cancelCloseTimer, setIsToolbarVisible, status]);
+
+  const handleStop = useCallback(() => {
+    stop();
+    setMessages((messages) => messages);
+  }, [setMessages, stop]);
 
   const artifactDefinition = artifactDefinitions.find(
     (definition) => definition.kind === artifactKind
@@ -383,35 +440,18 @@ const PureToolbar = ({
   return (
     <TooltipProvider delayDuration={0}>
       <motion.div
-        animate={{ opacity: 1, y: 0, scale: 1 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
         className="fixed right-6 bottom-6 z-50 flex cursor-pointer flex-col items-center rounded-3xl border bg-background py-1 shadow-lg"
-        exit={{ opacity: 0, y: -20, transition: { duration: 0.1 } }}
-        initial={{ opacity: 0, y: -20, scale: 1 }}
-        onAnimationComplete={() => {
-          setIsAnimating(false);
-        }}
-        onAnimationStart={() => {
-          setIsAnimating(true);
-        }}
-        onHoverEnd={() => {
-          if (status === "streaming") {
-            return;
-          }
-
-          startCloseTimer();
-        }}
-        onHoverStart={() => {
-          if (status === "streaming") {
-            return;
-          }
-
-          cancelCloseTimer();
-          setIsToolbarVisible(true);
-        }}
+        exit={{ opacity: 0, transition: { duration: 0.1 }, y: -20 }}
+        initial={{ opacity: 0, scale: 1, y: -20 }}
+        onAnimationComplete={handleAnimationComplete}
+        onAnimationStart={handleAnimationStart}
+        onHoverEnd={handleHoverEnd}
+        onHoverStart={handleHoverStart}
         ref={toolbarRef}
-        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+        transition={{ damping: 25, stiffness: 300, type: "spring" }}
       >
-        {onClose && (
+        {onClose ? (
           <motion.div
             animate={{ opacity: 1 }}
             className="p-3 text-muted-foreground transition-colors hover:text-foreground"
@@ -420,7 +460,7 @@ const PureToolbar = ({
           >
             <XIcon className="size-4" />
           </motion.div>
-        )}
+        ) : null}
 
         {status === "streaming" ? (
           <motion.div
@@ -429,10 +469,7 @@ const PureToolbar = ({
             exit={{ scale: 1 }}
             initial={{ scale: 1 }}
             key="stop-icon"
-            onClick={() => {
-              stop();
-              setMessages((messages) => messages);
-            }}
+            onClick={handleStop}
           >
             <StopIcon />
           </motion.div>

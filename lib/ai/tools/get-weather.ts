@@ -19,7 +19,7 @@ async function geocodeCity(
       return null;
     }
 
-    const result = data.results[0];
+    const [result] = data.results;
     return {
       latitude: result.latitude,
       longitude: result.longitude,
@@ -32,14 +32,6 @@ async function geocodeCity(
 export const getWeather = tool({
   description:
     "Get the current weather at a location. You can provide either coordinates or a city name.",
-  inputSchema: z.object({
-    latitude: z.number().optional(),
-    longitude: z.number().optional(),
-    city: z
-      .string()
-      .describe("City name (e.g., 'San Francisco', 'New York', 'London')")
-      .optional(),
-  }),
   execute: async (input) => {
     let latitude: number;
     let longitude: number;
@@ -51,11 +43,11 @@ export const getWeather = tool({
           error: `Could not find coordinates for "${input.city}". Please check the city name.`,
         };
       }
-      latitude = coords.latitude;
-      longitude = coords.longitude;
+      ({ latitude, longitude } = coords);
     } else if (input.latitude !== undefined && input.longitude !== undefined) {
-      latitude = input.latitude;
-      longitude = input.longitude;
+      const { latitude: inputLatitude, longitude: inputLongitude } = input;
+      latitude = inputLatitude;
+      longitude = inputLongitude;
     } else {
       return {
         error:
@@ -75,4 +67,12 @@ export const getWeather = tool({
 
     return weatherData;
   },
+  inputSchema: z.object({
+    city: z
+      .string()
+      .describe("City name (e.g., 'San Francisco', 'New York', 'London')")
+      .optional(),
+    latitude: z.number().optional(),
+    longitude: z.number().optional(),
+  }),
 });

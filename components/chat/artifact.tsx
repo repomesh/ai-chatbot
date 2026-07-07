@@ -175,13 +175,13 @@ function PureArtifact({
           await fetch(
             `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/document?id=${artifact.documentId}`,
             {
-              method: "POST",
               body: JSON.stringify({
-                title: artifact.title,
                 content: updatedContent,
-                kind: artifact.kind,
                 isManualEdit: true,
+                kind: artifact.kind,
+                title: artifact.title,
               }),
+              method: "POST",
             }
           );
 
@@ -224,38 +224,60 @@ function PureArtifact({
     [handleContentChange]
   );
 
-  function getDocumentContentById(index: number) {
-    if (!documents) {
-      return "";
-    }
-    if (!documents[index]) {
-      return "";
-    }
-    return documents[index].content ?? "";
-  }
+  const getDocumentContentById = useCallback(
+    (index: number) => {
+      if (!documents) {
+        return "";
+      }
+      if (!documents[index]) {
+        return "";
+      }
+      return documents[index].content ?? "";
+    },
+    [documents]
+  );
 
-  const handleVersionChange = (type: "next" | "prev" | "toggle" | "latest") => {
-    if (!documents) {
+  const handleVersionChange = useCallback(
+    (type: "next" | "prev" | "toggle" | "latest") => {
+      if (!documents) {
+        return;
+      }
+
+      if (type === "latest") {
+        setCurrentVersionIndex(documents.length - 1);
+        setMode("edit");
+      }
+
+      if (type === "toggle") {
+        setMode((currentMode) => (currentMode === "edit" ? "diff" : "edit"));
+      }
+
+      if (type === "prev") {
+        if (currentVersionIndex > 0) {
+          setCurrentVersionIndex((index) => index - 1);
+        }
+      } else if (
+        type === "next" &&
+        currentVersionIndex < documents.length - 1
+      ) {
+        setCurrentVersionIndex((index) => index + 1);
+      }
+    },
+    [currentVersionIndex, documents]
+  );
+
+  const handleArtifactScroll = useCallback(() => {
+    const el = artifactContentRef.current;
+    if (!el) {
       return;
     }
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    userScrolledArtifact.current = !atBottom;
+  }, []);
 
-    if (type === "latest") {
-      setCurrentVersionIndex(documents.length - 1);
-      setMode("edit");
-    }
-
-    if (type === "toggle") {
-      setMode((currentMode) => (currentMode === "edit" ? "diff" : "edit"));
-    }
-
-    if (type === "prev") {
-      if (currentVersionIndex > 0) {
-        setCurrentVersionIndex((index) => index - 1);
-      }
-    } else if (type === "next" && currentVersionIndex < documents.length - 1) {
-      setCurrentVersionIndex((index) => index + 1);
-    }
-  };
+  const handleClose = useCallback(() => {
+    setArtifact((prev) => ({ ...prev, isVisible: false }));
+  }, [setArtifact]);
 
   const [isToolbarVisible, setIsToolbarVisible] = useState(true);
 
@@ -348,15 +370,7 @@ function PureArtifact({
       <div
         className="relative flex-1 overflow-y-auto bg-background"
         data-slot="artifact-content"
-        onScroll={() => {
-          const el = artifactContentRef.current;
-          if (!el) {
-            return;
-          }
-          const atBottom =
-            el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-          userScrolledArtifact.current = !atBottom;
-        }}
+        onScroll={handleArtifactScroll}
         ref={artifactContentRef}
       >
         <artifactDefinition.content
@@ -379,7 +393,7 @@ function PureArtifact({
           title={artifact.title}
         />
         <AnimatePresence>
-          {isCurrentVersion && (
+          {isCurrentVersion ? (
             <Toolbar
               artifactActions={
                 <ArtifactActions
@@ -396,16 +410,14 @@ function PureArtifact({
               consoleError={consoleError}
               documentId={artifact.documentId}
               isToolbarVisible={isToolbarVisible}
-              onClose={() => {
-                setArtifact((prev) => ({ ...prev, isVisible: false }));
-              }}
+              onClose={handleClose}
               sendMessage={sendMessage}
               setIsToolbarVisible={setIsToolbarVisible}
               setMessages={setMessages}
               status={status}
               stop={stop}
             />
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
       <AnimatePresence>
@@ -426,25 +438,25 @@ function PureArtifact({
     return (
       <motion.div
         animate={{
+          borderRadius: 0,
+          height: windowHeight,
           opacity: 1,
+          width: "100dvw",
           x: 0,
           y: 0,
-          height: windowHeight,
-          width: "100dvw",
-          borderRadius: 0,
         }}
         className="fixed inset-0 z-50 flex h-dvh flex-col overflow-hidden bg-sidebar"
         data-testid="artifact"
         exit={{ opacity: 0, scale: 0.95 }}
         initial={{
+          borderRadius: 50,
+          height: artifact.boundingBox.height,
           opacity: 1,
+          width: artifact.boundingBox.width,
           x: artifact.boundingBox.left,
           y: artifact.boundingBox.top,
-          height: artifact.boundingBox.height,
-          width: artifact.boundingBox.width,
-          borderRadius: 50,
         }}
-        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        transition={{ damping: 30, stiffness: 300, type: "spring" }}
       >
         {artifactPanel}
       </motion.div>

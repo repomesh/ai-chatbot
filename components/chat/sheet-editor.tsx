@@ -2,7 +2,7 @@
 
 import { useTheme } from "next-themes";
 import { parse, unparse } from "papaparse";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import DataGrid, { textEditor } from "react-data-grid";
 import { cn } from "@/lib/utils";
 
@@ -45,27 +45,27 @@ const PureSpreadsheetEditor = ({ content, saveContent }: SheetEditorProps) => {
 
   const columns = useMemo(() => {
     const rowNumberColumn = {
-      key: "rowNumber",
-      name: "",
-      frozen: true,
-      width: 50,
-      renderCell: ({ rowIdx }: { rowIdx: number }) => rowIdx + 1,
       cellClass: "border-t border-r dark:bg-neutral-950 dark:text-neutral-50",
+      frozen: true,
       headerCellClass:
         "border-t border-r dark:bg-neutral-900 dark:text-neutral-50",
+      key: "rowNumber",
+      name: "",
+      renderCell: ({ rowIdx }: { rowIdx: number }) => rowIdx + 1,
+      width: 50,
     };
 
     const dataColumns = Array.from({ length: MIN_COLS }, (_, i) => ({
-      key: i.toString(),
-      name: String.fromCharCode(65 + i),
-      renderEditCell: textEditor,
-      width: 120,
       cellClass: cn("border-t dark:bg-neutral-950 dark:text-neutral-50", {
         "border-l": i !== 0,
       }),
       headerCellClass: cn("border-t dark:bg-neutral-900 dark:text-neutral-50", {
         "border-l": i !== 0,
       }),
+      key: i.toString(),
+      name: String.fromCharCode(65 + i),
+      renderEditCell: textEditor,
+      width: 120,
     }));
 
     return [rowNumberColumn, ...dataColumns];
@@ -107,6 +107,18 @@ const PureSpreadsheetEditor = ({ content, saveContent }: SheetEditorProps) => {
     saveContent(newCsvContent, true);
   };
 
+  const handleCellClick = useCallback(
+    (args: {
+      column: { key: string };
+      selectCell: (enableEditor?: boolean) => void;
+    }) => {
+      if (args.column.key !== "rowNumber") {
+        args.selectCell(true);
+      }
+    },
+    []
+  );
+
   return (
     <DataGrid
       className={resolvedTheme === "dark" ? "rdg-dark" : "rdg-light"}
@@ -116,11 +128,7 @@ const PureSpreadsheetEditor = ({ content, saveContent }: SheetEditorProps) => {
         sortable: true,
       }}
       enableVirtualization
-      onCellClick={(args) => {
-        if (args.column.key !== "rowNumber") {
-          args.selectCell(true);
-        }
-      }}
+      onCellClick={handleCellClick}
       onRowsChange={handleRowsChange}
       rows={localRows}
       style={{ height: "100%" }}

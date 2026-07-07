@@ -11,9 +11,9 @@ import { ChatbotError } from "@/lib/errors";
 
 const documentSchema = z.object({
   content: z.string(),
-  title: z.string(),
-  kind: z.enum(["text", "code", "image", "sheet"]),
   isManualEdit: z.boolean().optional(),
+  kind: z.enum(["text", "code", "image", "sheet"]),
+  title: z.string(),
 });
 
 export async function GET(request: Request) {
@@ -71,11 +71,9 @@ export async function POST(request: Request) {
   let isManualEdit: boolean | undefined;
 
   try {
-    const parsed = documentSchema.parse(await request.json());
-    content = parsed.content;
-    title = parsed.title;
-    kind = parsed.kind;
-    isManualEdit = parsed.isManualEdit;
+    ({ content, isManualEdit, kind, title } = documentSchema.parse(
+      await request.json()
+    ));
   } catch {
     return new ChatbotError(
       "bad_request:api",
@@ -94,15 +92,15 @@ export async function POST(request: Request) {
   }
 
   if (isManualEdit && documents.length > 0) {
-    const result = await updateDocumentContent({ id, content });
+    const result = await updateDocumentContent({ content, id });
     return Response.json(result, { status: 200 });
   }
 
   const document = await saveDocument({
-    id,
     content,
-    title,
+    id,
     kind,
+    title,
     userId: session.user.id,
   });
 

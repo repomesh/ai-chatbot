@@ -56,7 +56,7 @@ function PureEditor({
       const state = EditorState.create({
         doc: buildDocumentFromContent(content),
         plugins: [
-          ...exampleSetup({ schema: documentSchema, menuBar: false }),
+          ...exampleSetup({ menuBar: false, schema: documentSchema }),
           inputRules({
             rules: [
               headingRule(1),
@@ -72,7 +72,6 @@ function PureEditor({
       });
 
       editorRef.current = new EditorView(containerRef.current, {
-        state,
         handleDOMEvents: {
           click(_view, event) {
             const target = event.target as HTMLElement;
@@ -88,6 +87,7 @@ function PureEditor({
             return false;
           },
         },
+        state,
       });
     }
 
@@ -104,9 +104,9 @@ function PureEditor({
       editorRef.current.setProps({
         dispatchTransaction: (transaction) => {
           handleTransaction({
-            transaction,
             editorRef,
             onSaveContent,
+            transaction,
           });
         },
       });
@@ -209,6 +209,10 @@ function PureEditor({
     setActiveSuggestion(null);
   }, [activeSuggestion]);
 
+  const handleCloseSuggestion = useCallback(() => {
+    setActiveSuggestion(null);
+  }, []);
+
   return (
     <>
       <div
@@ -220,7 +224,7 @@ function PureEditor({
         createPortal(
           <SuggestionDialog
             onApply={handleApply}
-            onClose={() => setActiveSuggestion(null)}
+            onClose={handleCloseSuggestion}
             suggestion={activeSuggestion}
           />,
           containerRef.current.closest(
